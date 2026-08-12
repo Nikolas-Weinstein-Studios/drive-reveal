@@ -51,7 +51,9 @@ profile).
 Writes `HKCU:\Software\Classes\gdrivereveal`. Per-user, so no administrator rights. It
 uses `pythonw.exe` so no console window flashes on each click.
 
-**macOS** — *not yet run on a real Mac; see [Status](#status).*
+**macOS** — never run on a real Mac yet. Follow
+**[install/MACOS.md](install/MACOS.md)**, which is a full bring-up checklist with the
+expected output at each step and what to do when one fails.
 
 ```bash
 ./install/install_macos.sh
@@ -139,6 +141,10 @@ python3 tests/test_live.py          # does the metadata resolve at all on this m
 `test_live.py` first: if Drive's schema or mount layout differs on macOS, that fails in
 about a second and there is no point continuing to the installer.
 
+**[install/MACOS.md](install/MACOS.md)** covers each of those steps in full — prerequisites,
+expected output, how to diagnose a failure at each stage, and ranked fallbacks if the
+AppleScript applet turns out to be a dead end.
+
 ## Limits
 
 - **Shared with me** items have no local path at all until you add a shortcut to My
@@ -177,12 +183,16 @@ Run it first if anything stops working.
 Nothing here travels in the repo, so each machine needs:
 
 1. Python 3.9+ on `PATH` (3.12+ preferred: `os.listdrives()` makes mount discovery faster).
+   On macOS this means installing one — `/usr/bin/python3` is a stub, see
+   [install/MACOS.md](install/MACOS.md).
 2. Drive for desktop installed and signed in.
 3. The helper installer run once (above).
 4. The bookmarklet, or a signed `.xpi`, in that browser profile.
 
 Verify with `-Verify` / `--verify`, which prints the resolved mount point and smoke-tests
 the helper.
+
+Bringing up a Mac for the first time: **[install/MACOS.md](install/MACOS.md)**.
 
 ## Layout
 
