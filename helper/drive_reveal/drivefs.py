@@ -73,36 +73,68 @@ def account_dirs(base: Path | None = None) -> list[Path]:
     return sorted(accounts, key=lambda p: p.stat().st_mtime, reverse=True)
 
 
-def mount_point(base: Path | None = None) -> Path:
-    """Find where Drive for desktop is mounted (a drive letter, or a CloudStorage dir).
+def mount_points(base: Path | None = None) -> list[Path]:
+    """Every place Drive for desktop is currently mounted, best guess first.
 
-    Drive records this itself in root_preference_sqlite.db, which is authoritative and
-    survives the user relocating or remapping the mount. Falls back to probing the
-    conventional locations if that table cannot be read.
+    There can be more than one. Drive allows several accounts signed in at once and
+    gives each its own mount: a separate drive letter on Windows, a separate
+    ~/Library/CloudStorage/GoogleDrive-<email> directory on macOS. Which mount belongs
+    to which account is not recorded anywhere readable -- the `roots` table covers
+    mirrored folders, not the streamed mount -- so callers resolve the ambiguity by
+    checking which mount actually contains the path they built.
     """
     override = os.environ.get("DRIVE_REVEAL_MOUNT")
     if override:
-        return Path(override)
+        return [Path(override)]
 
     base = base or drivefs_dir()
+    found: list[Path] = []
+
+    def add(path: Path) -> None:
+        if _looks_like_mount(path) and not any(p == path for p in found):
+            found.append(path)
+
+    # Drive records its own mount points, which survives the user remapping the drive.
     try:
         with closing(_read_only(base / "root_preference_sqlite.db")) as db:
             for (mount,) in db.execute(
                 "SELECT last_mount_point FROM media WHERE name = 'Google Drive' AND ignored = 0"
             ):
-                if mount and _looks_like_mount(Path(mount)):
-                    return Path(mount)
+                if mount:
+                    add(Path(mount))
     except (sqlite3.Error, OSError, ResolveError):
         pass  # fall through to probing
 
     for candidate in _candidate_mounts():
-        if _looks_like_mount(candidate):
-            return candidate
+        add(candidate)
 
-    raise ResolveError(
-        "Could not find the Google Drive mount point. Is Drive for desktop running? "
-        "Set DRIVE_REVEAL_MOUNT to override."
-    )
+    if not found:
+        raise ResolveError(
+            "Could not find the Google Drive mount point. Is Drive for desktop running? "
+            "Set DRIVE_REVEAL_MOUNT to override."
+        )
+    return found
+
+
+def mount_point(base: Path | None = None) -> Path:
+    """The primary Drive mount. Use mount_points() when more than one may apply."""
+    return mount_points(base)[0]
+
+
+def _best_mount(relative: PurePath, mounts: list[Path]) -> Path:
+    """Choose the mount that actually holds `relative`.
+
+    With one account this is just the first mount. With several it is what keeps an item
+    from the second account off the first account's mount. If nothing matches -- the item
+    is real but not downloaded yet -- the primary mount is still the best answer.
+    """
+    for mount in mounts:
+        try:
+            if (mount / relative).exists():
+                return mount
+        except OSError:
+            continue
+    return mounts[0]
 
 
 def _candidate_mounts() -> list[Path]:
@@ -270,7 +302,7 @@ def resolve(item_id: str) -> Resolved:
         raise ResolveError("No Drive item ID given")
 
     base = drivefs_dir()
-    mount = mount_point(base)
+    mounts = mount_points(base)
     problems = []
 
     for account in account_dirs(base):
@@ -295,7 +327,7 @@ def resolve(item_id: str) -> Resolved:
 
                 _, title, is_folder, _ = items[stable_id]
                 return Resolved(
-                    path=Path(mount) / relative,
+                    path=_best_mount(relative, mounts) / relative,
                     relative=relative,
                     name=title,
                     is_folder=is_folder,

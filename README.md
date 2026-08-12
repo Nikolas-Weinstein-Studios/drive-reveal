@@ -51,18 +51,30 @@ profile).
 Writes `HKCU:\Software\Classes\gdrivereveal`. Per-user, so no administrator rights. It
 uses `pythonw.exe` so no console window flashes on each click.
 
-**macOS**
+**macOS** — *not yet run on a real Mac; see [Status](#status).*
 
 ```bash
 ./install/install_macos.sh
-./install/install_macos.sh --verify
+./install/install_macos.sh --verify      # check it, change nothing
+./install/install_macos.sh --test        # live round trip through the URL scheme
 ./install/install_macos.sh --uninstall
 ```
 
-macOS routes URL schemes to an app bundle rather than a command, so this compiles a small
-AppleScript applet into `~/Applications/DriveReveal.app` whose `on open location` handler
-calls the same Python helper. `osacompile` ships with macOS; no Xcode, no developer
-account.
+macOS routes URL schemes to an app bundle rather than a command, and delivers the URL as
+an Apple Event rather than as argv — so a plain shell script cannot receive it. This
+compiles a small AppleScript applet into `~/Applications/DriveReveal.app` whose
+`on open location` handler calls the same Python helper. `osacompile` ships with macOS; no
+Xcode, no developer account, and nothing downloaded, so no Gatekeeper prompt.
+
+Two things to know:
+
+- **macOS has no usable `python3` out of the box.** `/usr/bin/python3` is a stub that pops
+  a Command Line Tools installer instead of running. The installer probes each candidate
+  by executing it and skips the stub, but you still need a real one:
+  `brew install python`, or python.org.
+- **The applet has absolute paths baked in** at install time, so moving the checkout or
+  upgrading Python breaks it. `--verify` compares against a stamp recorded inside the
+  bundle and tells you to re-run rather than failing mysteriously.
 
 Both installers derive every path from their own location, so the repo can be cloned
 anywhere. Nothing machine-specific is written into the repo.
@@ -102,6 +114,31 @@ Selected-row detection reads Drive's HTML, which is obfuscated and changes witho
 notice. When it breaks, the tool falls back to the folder in the address bar rather than
 guessing — so the worst case is less precision, never a wrong folder.
 
+## Status
+
+| | Helper | Protocol handler | Bookmarklet | Extension |
+| --- | --- | --- | --- | --- |
+| **Windows** | verified | verified | verified | loads temporarily; needs signing to persist |
+| **macOS** | untested | untested | should be identical | untested |
+
+The macOS half is written but has never been run — there was no Mac available. The Python
+helper is platform-generic apart from `open -R` versus `explorer.exe /select,` and where it
+looks for the mount, and the browser side does not care about the OS at all. So the
+untested surface is mostly `install_macos.sh` itself, and specifically the AppleScript
+applet receiving the Apple Event.
+
+To bring up a Mac, in order:
+
+```bash
+python3 tests/test_live.py          # does the metadata resolve at all on this machine
+./install/install_macos.sh
+./install/install_macos.sh --verify
+./install/install_macos.sh --test   # a Finder window should open on My Drive
+```
+
+`test_live.py` first: if Drive's schema or mount layout differs on macOS, that fails in
+about a second and there is no point continuing to the installer.
+
 ## Limits
 
 - **Shared with me** items have no local path at all until you add a shortcut to My
@@ -110,7 +147,12 @@ guessing — so the worst case is less precision, never a wrong folder.
   from disk. The helper opens the nearest parent that does exist and notes it on stderr.
 - **Multiple accounts** are handled by searching every signed-in account's metadata. The
   `/u/0/` index in Drive URLs is per-browser-profile ordering and does not map onto Drive
-  for desktop's accounts, so it is ignored.
+  for desktop's accounts, so it is ignored. Each account gets its own mount — a second
+  drive letter on Windows, a second `~/Library/CloudStorage/GoogleDrive-<email>` on macOS —
+  and which mount belongs to which account is not recorded anywhere readable, so the
+  resolver picks whichever mount actually contains the path it built.
+  One exception: a bare `My Drive` or `Shared drives` root URL is genuinely ambiguous
+  across accounts and resolves to the primary mount.
 - **Trashed items** still resolve, to the path they had before being trashed. That path
   will not exist, so you get the parent folder.
 - **The schema is undocumented.** A Drive for desktop update could change it. That is what

@@ -19,7 +19,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "helper"))
 from drive_reveal import ids                                    # noqa: E402
 from drive_reveal.cli import main                               # noqa: E402
 from drive_reveal.drivefs import (                              # noqa: E402
-    ResolveError, _read_only, account_dirs, mount_point, resolve,
+    ResolveError, _best_mount, _read_only, account_dirs, mount_point,
+    mount_points, resolve,
 )
 
 PASS, FAIL = "  ok  ", " FAIL "
@@ -87,6 +88,41 @@ def test_environment() -> None:
     check("mount point is a real Drive mount", mount.is_dir(), str(mount))
     check("mount exposes My Drive or Shared drives",
           any((mount / n).is_dir() for n in ("My Drive", "Shared drives")))
+
+
+def test_multiple_mounts() -> None:
+    """Several accounts signed in means several mounts, and only one holds a given item.
+
+    Simulated rather than live: this machine has one account, and the failure mode only
+    appears with two. Without _best_mount, an item from the second account would be
+    joined onto the first account's mount and produce a wrong but plausible path.
+    """
+    print("\n== choosing among multiple mounts ==")
+    import tempfile
+
+    real = mount_points()[0]
+    decoy = Path(tempfile.mkdtemp(prefix="drive-reveal-decoy-"))
+    (decoy / "My Drive").mkdir()
+    (decoy / "Shared drives").mkdir()
+
+    rows = _sample("""
+        SELECT i.id FROM items i JOIN stable_parents p ON p.item_stable_id = i.stable_id
+        WHERE i.trashed = 0 AND i.is_tombstone = 0 AND i.is_folder = 1""", limit=1)
+    known = resolve(rows[0][0])
+
+    check("decoy dir passes the shape test, so this is a real ambiguity",
+          all((decoy / n).is_dir() for n in ("My Drive", "Shared drives")))
+    check("picks the mount that holds the item, not the first one offered",
+          _best_mount(known.relative, [decoy, real]) == real,
+          f"chose {_best_mount(known.relative, [decoy, real])}")
+    check("keeps the primary mount when the item is downloaded nowhere",
+          _best_mount(Path("Shared drives/does-not-exist-anywhere"), [decoy, real]) == decoy)
+    check("single mount is returned unchanged",
+          _best_mount(known.relative, [real]) == real)
+
+    for name in ("My Drive", "Shared drives"):
+        (decoy / name).rmdir()
+    decoy.rmdir()
 
 
 def _sample(sql: str, limit: int = 6) -> list[tuple]:
@@ -199,6 +235,7 @@ def test_cli_contract() -> None:
 if __name__ == "__main__":
     test_id_extraction()
     test_environment()
+    test_multiple_mounts()
     test_resolves_real_items()
     test_orphans_fail_cleanly()
     test_unknown_id()
