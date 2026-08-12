@@ -1,0 +1,18 @@
+# Normalise to LF in the repository and check out per-platform. Set here rather than via
+# core.autocrlf so the behaviour is identical on every machine without local git config.
+* text=auto
+
+# A shell script that gets checked out with CRLF fails on macOS with a bad-interpreter
+# error, so pin it to LF regardless of platform.
+*.sh text eol=lf
+
+# PowerShell is fine either way, but CRLF is what every Windows editor will write anyway.
+*.ps1 text eol=crlf
+
+*.py    text
+*.js    text
+*.mjs   text
+*.json  text
+*.html  text
+*.md    text
+*.svg   text

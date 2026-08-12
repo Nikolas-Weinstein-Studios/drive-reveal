@@ -1,0 +1,9 @@
+__pycache__/
+*.py[cod]
+
+# Signed add-on builds come back from AMO per profile; not source.
+*.xpi
+web-ext-artifacts/
+
+.DS_Store
+Thumbs.db

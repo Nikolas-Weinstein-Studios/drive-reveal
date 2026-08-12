@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Install: Reveal in Drive folder</title>
+  <style>
+    :root { color-scheme: light dark; }
+    body {
+      font: 15px/1.6 system-ui, -apple-system, sans-serif;
+      max-width: 46rem; margin: 3rem auto; padding: 0 1.5rem;
+    }
+    h1 { font-size: 1.5rem; margin-bottom: .25rem; }
+    p.lede { color: #666; margin-top: 0; }
+    .bookmarklet {
+      display: inline-block; padding: .6rem 1.1rem; margin: .5rem 0;
+      background: #1a73e8; color: #fff; text-decoration: none;
+      border-radius: 6px; font-weight: 600;
+    }
+    .drop {
+      border: 2px dashed #bbb; border-radius: 8px;
+      padding: 1.25rem; text-align: center; margin: 1.5rem 0;
+    }
+    code { background: rgba(127,127,127,.15); padding: .1em .35em; border-radius: 3px; }
+    ol { padding-left: 1.3rem; }
+    li { margin: .4rem 0; }
+    .note { border-left: 3px solid #f9ab00; padding-left: .9rem; color: #666; }
+  </style>
+</head>
+<body>
+  <h1>Reveal in Drive folder</h1>
+  <p class="lede">Jump from a Google Drive web page to the same folder in Explorer or Finder.</p>
+
+  <div class="drop">
+    <p><strong>Drag this to your bookmarks bar:</strong></p>
+      <!-- BOOKMARKLET:START -->
+      <a class="bookmarklet" href="javascript:%28function%28%29%7Bvar%20ID%3D%2F%5E%5BA-Za-z0-9_-%5D%7B15%2C%7D%24%2F%3Bvar%20ids%3D%7B%7D%3Bvar%20count%3D0%3Bvar%20nodes%3Ddocument.querySelectorAll%28%27%5Baria-selected%3D%22true%22%5D%5Bdata-id%5D%27%29%3Bfor%28var%20i%3D0%3Bi%3Cnodes.length%3Bi%2B%2B%29%7Bvar%20v%3Dnodes%5Bi%5D.getAttribute%28%27data-id%27%29%3Bif%28ID.test%28v%29%26%26%21ids%5Bv%5D%29%7Bids%5Bv%5D%3D1%3Bcount%2B%2B%3B%7D%7Dvar%20target%3Bif%28count%3D%3D%3D1%29%7Btarget%3D%27gdrivereveal%3A%2F%2Freveal%3Fid%3D%27%2BencodeURIComponent%28Object.keys%28ids%29%5B0%5D%29%3B%7Delse%7Btarget%3D%27gdrivereveal%3A%2F%2Freveal%3Furl%3D%27%2BencodeURIComponent%28location.href%29%3B%7Dlocation.href%3Dtarget%3B%7D%29%28%29%3B">Reveal in Drive folder</a>
+      <!-- BOOKMARKLET:END -->
+    <p style="color:#888;font-size:.9em">Clicking it here will not work &mdash; it only does something on a Drive page.</p>
+  </div>
+
+  <h2>Before it works</h2>
+  <ol>
+    <li>Install the local helper: run <code>install/install_windows.ps1</code> or
+      <code>install/install_macos.sh</code> from this repo. That registers the
+      <code>gdrivereveal://</code> handler.</li>
+    <li>Open a folder in Google Drive, then click the bookmark.</li>
+    <li>Firefox will ask which application should open the link. Choose the helper and
+      tick <strong>Remember my choice</strong>, or you will be asked every time.</li>
+  </ol>
+
+  <h2>How it picks a target</h2>
+  <p>Select exactly one file and it reveals that file. Select nothing, or several files,
+    and it opens the folder you are currently viewing.</p>
+
+  <p class="note">Items under <strong>Shared with me</strong> have no local path until you
+    add a shortcut to My Drive. The helper says so rather than guessing.</p>
+</body>
+</html>

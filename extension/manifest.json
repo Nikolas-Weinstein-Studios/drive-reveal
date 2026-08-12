@@ -1,0 +1,52 @@
+{
+  "manifest_version": 2,
+  "name": "Reveal in Drive folder",
+  "version": "0.1.0",
+  "description": "Open the local Drive for desktop folder for whatever you are looking at in Google Drive.",
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "drive-reveal@nikolas.net",
+      "strict_min_version": "115.0"
+    }
+  },
+  "permissions": [
+    "contextMenus",
+    "activeTab"
+  ],
+  "background": {
+    "scripts": ["background.js"],
+    "persistent": false
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://drive.google.com/*",
+        "https://docs.google.com/document/*",
+        "https://docs.google.com/spreadsheets/*",
+        "https://docs.google.com/presentation/*"
+      ],
+      "js": ["content.js"],
+      "run_at": "document_idle",
+      "all_frames": false
+    }
+  ],
+  "browser_action": {
+    "default_title": "Reveal in Drive folder (Alt+Shift+R)",
+    "default_icon": {
+      "48": "icons/reveal.svg",
+      "96": "icons/reveal.svg"
+    }
+  },
+  "icons": {
+    "48": "icons/reveal.svg",
+    "96": "icons/reveal.svg"
+  },
+  "commands": {
+    "reveal": {
+      "suggested_key": {
+        "default": "Alt+Shift+R"
+      },
+      "description": "Reveal the current Drive item in the local Drive folder"
+    }
+  }
+}
