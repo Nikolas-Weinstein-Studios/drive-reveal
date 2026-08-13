@@ -100,15 +100,17 @@ def test_multiple_mounts() -> None:
     print("\n== choosing among multiple mounts ==")
     import tempfile
 
-    real = mount_points()[0]
-    decoy = Path(tempfile.mkdtemp(prefix="drive-reveal-decoy-"))
-    (decoy / "My Drive").mkdir()
-    (decoy / "Shared drives").mkdir()
-
     rows = _sample("""
         SELECT i.id FROM items i JOIN stable_parents p ON p.item_stable_id = i.stable_id
         WHERE i.trashed = 0 AND i.is_tombstone = 0 AND i.is_folder = 1""", limit=1)
     known = resolve(rows[0][0])
+    # The mount that actually holds the sampled item -- not just mount_points()[0].
+    # With several signed-in accounts, the "primary" mount and the account an item
+    # happens to live in are unrelated, so assuming index 0 holds it is wrong.
+    real = _best_mount(known.relative, mount_points())
+    decoy = Path(tempfile.mkdtemp(prefix="drive-reveal-decoy-"))
+    (decoy / "My Drive").mkdir()
+    (decoy / "Shared drives").mkdir()
 
     check("decoy dir passes the shape test, so this is a real ambiguity",
           all((decoy / n).is_dir() for n in ("My Drive", "Shared drives")))

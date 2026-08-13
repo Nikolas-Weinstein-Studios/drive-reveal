@@ -121,13 +121,17 @@ guessing — so the worst case is less precision, never a wrong folder.
 | | Helper | Protocol handler | Bookmarklet | Extension |
 | --- | --- | --- | --- | --- |
 | **Windows** | verified | verified | verified | loads temporarily; needs signing to persist |
-| **macOS** | untested | untested | should be identical | untested |
+| **macOS** | verified | verified | untested | untested |
 
-The macOS half is written but has never been run — there was no Mac available. The Python
-helper is platform-generic apart from `open -R` versus `explorer.exe /select,` and where it
-looks for the mount, and the browser side does not care about the OS at all. So the
-untested surface is mostly `install_macos.sh` itself, and specifically the AppleScript
-applet receiving the Apple Event.
+The macOS half is now verified on a real Mac (2-account Drive setup): `tests/test_live.py`
+resolves real items to real paths, `install_macos.sh` installs cleanly, and the AppleScript
+applet correctly receives the `gdrivereveal://` Apple Event and opens Finder —
+`install_macos.sh --test` opened a live Finder window end to end. `test_live.py` also had a
+real bug surfaced by having two signed-in accounts: `test_multiple_mounts` assumed the
+primary Drive mount always holds the sampled item, which isn't true once a second account's
+mount can come first; fixed to find the mount that actually holds the item instead of
+assuming index 0. The bookmarklet/extension browser side is unexercised — same code path as
+Windows, just not yet clicked through in a Mac browser.
 
 To bring up a Mac, in order:
 
