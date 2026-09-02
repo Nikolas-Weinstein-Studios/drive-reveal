@@ -153,14 +153,19 @@ AppleScript applet turns out to be a dead end.
 
 - **Shared with me** items have no local path at all until you add a shortcut to My
   Drive. The helper says so instead of inventing one.
+- **Hidden or inaccessible shared drives** can remain in Drive for desktop's cached
+  metadata after their Finder directory disappears. The helper reports that state and
+  tells you to unhide the drive or reconnect the affected account instead of silently
+  opening an empty `Shared drives` folder.
 - **Not downloaded yet**: with selective sync an item can be in the metadata but absent
   from disk. The helper opens the nearest parent that does exist and notes it on stderr.
 - **Multiple accounts** are handled by searching every signed-in account's metadata. The
   `/u/0/` index in Drive URLs is per-browser-profile ordering and does not map onto Drive
   for desktop's accounts, so it is ignored. Each account gets its own mount — a second
   drive letter on Windows, a second `~/Library/CloudStorage/GoogleDrive-<email>` on macOS —
-  and which mount belongs to which account is not recorded anywhere readable, so the
-  resolver picks whichever mount actually contains the path it built.
+  and the resolver picks the matching one. On macOS, the File Provider domain metadata
+  maps each mount to DriveFS's account ID exactly; elsewhere, the resolver uses the mount
+  that actually contains the path it built and refuses ambiguous shared-drive names.
   One exception: a bare `My Drive` or `Shared drives` root URL is genuinely ambiguous
   across accounts and resolves to the primary mount.
 - **Trashed items** still resolve, to the path they had before being trashed. That path

@@ -16,6 +16,7 @@ from __future__ import annotations
 import os
 import shutil
 import sqlite3
+import subprocess
 import sys
 import tempfile
 from contextlib import closing
@@ -25,6 +26,10 @@ from pathlib import Path, PurePath
 
 class ResolveError(Exception):
     """Raised when an item ID cannot be turned into a local path."""
+
+
+class SharedDriveUnavailable(ResolveError):
+    """Raised when cached shared-drive metadata has no safe account mount."""
 
 
 # --------------------------------------------------------------------------- layout
@@ -121,13 +126,46 @@ def mount_point(base: Path | None = None) -> Path:
     return mount_points(base)[0]
 
 
-def _best_mount(relative: PurePath, mounts: list[Path]) -> Path:
+def _mount_for_account(account_id: str, mounts: list[Path]) -> Path | None:
+    """Map DriveFS's account ID to its mount when the platform exposes that link.
+
+    macOS File Provider stores the numeric DriveFS account ID in an xattr on each
+    GoogleDrive-* mount. Using it avoids same-named paths in different accounts ever
+    being mistaken for one another. Other platforms fall back to path evidence.
+    """
+    if sys.platform != "darwin":
+        return None
+    expected = f"gdrive-{account_id}"
+    for mount in mounts:
+        try:
+            result = subprocess.run(
+                ["xattr", "-p", "com.apple.file-provider-domain-id", str(mount)],
+                capture_output=True, text=True, timeout=2,
+            )
+        except (OSError, subprocess.TimeoutExpired):
+            continue
+        if result.returncode != 0:
+            continue
+        domain = result.stdout.strip()
+        if domain.rsplit("/", 1)[-1] == expected:
+            return mount
+    return None
+
+
+def _best_mount(
+    relative: PurePath, mounts: list[Path], account_id: str | None = None
+) -> Path:
     """Choose the mount that actually holds `relative`.
 
     With one account this is just the first mount. With several it is what keeps an item
     from the second account off the first account's mount. If nothing matches -- the item
     is real but not downloaded yet -- the primary mount is still the best answer.
     """
+    if account_id:
+        account_mount = _mount_for_account(account_id, mounts)
+        if account_mount is not None:
+            return account_mount
+
     for mount in mounts:
         try:
             if (mount / relative).exists():
@@ -135,6 +173,37 @@ def _best_mount(relative: PurePath, mounts: list[Path]) -> Path:
         except OSError:
             continue
     return mounts[0]
+
+
+def _shared_drive_is_mounted(
+    relative: PurePath, mounts: list[Path], account_id: str | None = None
+) -> bool:
+    """Whether a resolved shared drive has a real top-level directory on any mount.
+
+    Files deeper in a streamed drive may legitimately be absent until downloaded, but
+    the shared drive's own directory is always present while Drive for desktop exposes
+    it. Cached metadata can outlive access to a hidden or inaccessible shared drive.
+    """
+    parts = relative.parts
+    if len(parts) < 2 or parts[0] != "Shared drives":
+        return True
+
+    candidates = mounts
+    if account_id:
+        account_mount = _mount_for_account(account_id, mounts)
+        if account_mount is not None:
+            candidates = [account_mount]
+
+    matches = 0
+    for mount in candidates:
+        try:
+            if (mount / parts[0] / parts[1]).is_dir():
+                matches += 1
+        except OSError:
+            continue
+    # With no account-to-mount mapping, duplicate display names are ambiguous. Failing
+    # clearly is safer than opening the same-named drive from the wrong Google account.
+    return matches == 1
 
 
 def _candidate_mounts() -> list[Path]:
@@ -304,6 +373,7 @@ def resolve(item_id: str) -> Resolved:
     base = drivefs_dir()
     mounts = mount_points(base)
     problems = []
+    shared_drive_problems = []
 
     for account in account_dirs(base):
         try:
@@ -325,9 +395,19 @@ def resolve(item_id: str) -> Resolved:
                     relative = _walk_up(target, items, parents, my_root, shared_roots)
                     stable_id, via_shortcut = target, True
 
+                if not _shared_drive_is_mounted(relative, mounts, account.name):
+                    drive_name = relative.parts[1]
+                    raise SharedDriveUnavailable(
+                        f"Shared drive {drive_name!r} is present in cached metadata but "
+                        "is not uniquely exposed for this account by Drive for desktop. "
+                        "It may be hidden or this account may no longer have access; "
+                        "unhide it in Google Drive or reconnect the account in Drive for "
+                        "desktop."
+                    )
+
                 _, title, is_folder, _ = items[stable_id]
                 return Resolved(
-                    path=_best_mount(relative, mounts) / relative,
+                    path=_best_mount(relative, mounts, account.name) / relative,
                     relative=relative,
                     name=title,
                     is_folder=is_folder,
@@ -335,8 +415,15 @@ def resolve(item_id: str) -> Resolved:
                     via_shortcut=via_shortcut,
                 )
         except ResolveError as exc:
-            problems.append(f"{account.name}: {exc}")
+            destination = (
+                shared_drive_problems
+                if isinstance(exc, SharedDriveUnavailable)
+                else problems
+            )
+            destination.append(f"{account.name}: {exc}")
 
+    if shared_drive_problems:
+        raise ResolveError("; ".join(shared_drive_problems))
     if problems:
         raise ResolveError("; ".join(problems))
     raise ResolveError(

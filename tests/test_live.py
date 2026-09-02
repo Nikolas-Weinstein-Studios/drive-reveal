@@ -19,8 +19,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "helper"))
 from drive_reveal import ids                                    # noqa: E402
 from drive_reveal.cli import main                               # noqa: E402
 from drive_reveal.drivefs import (                              # noqa: E402
-    ResolveError, _best_mount, _read_only, account_dirs, mount_point,
-    mount_points, resolve,
+    ResolveError, _best_mount, _mount_for_account, _read_only,
+    _shared_drive_is_mounted, account_dirs, mount_point, mount_points, resolve,
 )
 
 PASS, FAIL = "  ok  ", " FAIL "
@@ -88,14 +88,19 @@ def test_environment() -> None:
     check("mount point is a real Drive mount", mount.is_dir(), str(mount))
     check("mount exposes My Drive or Shared drives",
           any((mount / n).is_dir() for n in ("My Drive", "Shared drives")))
+    if sys.platform == "darwin":
+        mapped = [_mount_for_account(account.name, mount_points()) for account in accounts]
+        check("every macOS account maps to its own mount",
+              all(mapped) and len(set(mapped)) == len(accounts),
+              ", ".join(str(path) for path in mapped))
 
 
 def test_multiple_mounts() -> None:
     """Several accounts signed in means several mounts, and only one holds a given item.
 
-    Simulated rather than live: this machine has one account, and the failure mode only
-    appears with two. Without _best_mount, an item from the second account would be
-    joined onto the first account's mount and produce a wrong but plausible path.
+    The decoy makes path selection deterministic even when this machine's live account
+    setup changes. Without _best_mount, an item from another account would be joined
+    onto the first account's mount and produce a wrong but plausible path.
     """
     print("\n== choosing among multiple mounts ==")
     import tempfile
@@ -121,6 +126,24 @@ def test_multiple_mounts() -> None:
           _best_mount(Path("Shared drives/does-not-exist-anywhere"), [decoy, real]) == decoy)
     check("single mount is returned unchanged",
           _best_mount(known.relative, [real]) == real)
+
+    (decoy / "Shared drives" / "WORK").mkdir()
+    shared_child = Path("Shared drives/WORK/not-downloaded-yet.txt")
+    check("visible shared-drive root is accepted",
+          _shared_drive_is_mounted(shared_child, [real, decoy]))
+    check("missing shared-drive root is detected",
+          not _shared_drive_is_mounted(
+              Path("Shared drives/NOT MOUNTED/file.txt"), [real, decoy]
+          ))
+
+    duplicate = Path(tempfile.mkdtemp(prefix="drive-reveal-duplicate-"))
+    (duplicate / "Shared drives" / "WORK").mkdir(parents=True)
+    check("same-named shared drives are treated as ambiguous",
+          not _shared_drive_is_mounted(shared_child, [decoy, duplicate]))
+    (duplicate / "Shared drives" / "WORK").rmdir()
+    (duplicate / "Shared drives").rmdir()
+    duplicate.rmdir()
+    (decoy / "Shared drives" / "WORK").rmdir()
 
     for name in ("My Drive", "Shared drives"):
         (decoy / name).rmdir()

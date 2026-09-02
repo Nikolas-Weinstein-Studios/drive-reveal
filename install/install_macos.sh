@@ -95,6 +95,35 @@ check_scheme() {
     return 1
 }
 
+check_signature() {
+    if codesign --verify --deep --strict "$APP" >/dev/null 2>&1; then
+        echo 'Code signature: valid'
+        return 0
+    fi
+    echo 'Code signature: INVALID; re-run this script' >&2
+    return 1
+}
+
+check_registration() {
+    [ -x "$LSREGISTER" ] || {
+        echo 'Launch Services: lsregister not found' >&2
+        return 1
+    }
+    # Consume the complete dump: with pipefail enabled, an early-exiting filter would
+    # SIGPIPE lsregister and turn a successful lookup into a false failure. Require the
+    # scheme claim inside this app's own record, not merely a stale mention of its path.
+    if "$LSREGISTER" -dump 2>/dev/null | awk -v app="$APP" '
+        /^path:/ { in_app = index($0, app) > 0 }
+        in_app && /^claimed schemes:/ && /gdrivereveal:/ { found = 1 }
+        END { exit(found ? 0 : 1) }
+    '; then
+        echo 'Launch Services: gdrivereveal is registered to this app'
+        return 0
+    fi
+    echo 'Launch Services: gdrivereveal is NOT registered to this app; re-run this script' >&2
+    return 1
+}
+
 smoke_test_helper() {
     local python_bin
     python_bin="$(find_python)" || { echo 'Python: NOT FOUND (need 3.9+)' >&2; return 1; }
@@ -124,13 +153,20 @@ case "${1:-}" in
     rc=0
     report_env
     echo
-    [ -d "$APP" ] && { check_scheme || rc=1; check_stamp || rc=1; } || rc=1
+    [ -d "$APP" ] && {
+        check_scheme || rc=1
+        check_stamp || rc=1
+        check_signature || rc=1
+        check_registration || rc=1
+    } || rc=1
     echo
     smoke_test_helper || rc=1
     exit $rc
     ;;
 --test)
     [ -d "$APP" ] || die "not installed; run this script with no arguments first"
+    check_signature >/dev/null || die "invalid app signature; re-run this script"
+    check_registration >/dev/null || die "app is not registered; re-run this script"
     echo 'Dispatching gdrivereveal:// through Launch Services, exactly as the browser does.'
     echo 'A Finder window should open on your My Drive.'
     open 'gdrivereveal://reveal?url=https%3A%2F%2Fdrive.google.com%2Fdrive%2Fmy-drive'
@@ -147,6 +183,7 @@ esac
 
 [ -f "$HELPER" ] || die "helper not found at $HELPER; run this from inside the checkout"
 command -v osacompile >/dev/null 2>&1 || die 'osacompile not found; it ships with macOS'
+command -v codesign >/dev/null 2>&1 || die 'codesign not found; it ships with macOS'
 [ -x /usr/libexec/PlistBuddy ] || die 'PlistBuddy not found; it ships with macOS'
 python_bin="$(find_python)" || die 'no working python3 3.9+ found. Install it with `brew install python` or from python.org, then re-run.'
 
@@ -207,8 +244,20 @@ helper=$HELPER
 repo=$REPO_ROOT
 STAMP
 
+# osacompile ad-hoc signs the applet, but the Info.plist and install stamp above are
+# deliberately added afterward. Re-sign the finished bundle so Launch Services accepts
+# it instead of silently dropping the URL-scheme registration as an invalid app.
+codesign --force --deep --sign - "$APP" >/dev/null 2>&1 \
+    || die "could not sign $APP"
+codesign --verify --deep --strict "$APP" >/dev/null 2>&1 \
+    || die "signature verification failed for $APP"
+
 # Force Launch Services to notice the new scheme now rather than at some later login.
-[ -x "$LSREGISTER" ] && "$LSREGISTER" -f "$APP" >/dev/null 2>&1 || true
+[ -x "$LSREGISTER" ] || die 'lsregister not found; cannot register gdrivereveal'
+"$LSREGISTER" -f "$APP" >/dev/null 2>&1 \
+    || die 'Launch Services rejected DriveReveal.app'
+check_registration >/dev/null \
+    || die 'DriveReveal.app is still absent from Launch Services after registration'
 
 echo "Installed $APP"
 echo "  python: $python_bin"

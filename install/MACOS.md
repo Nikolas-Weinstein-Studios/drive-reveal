@@ -1,7 +1,7 @@
 # macOS bring-up
 
-The macOS half of drive-reveal is written but has never been run. This is the checklist to
-verify it, what each step should print, and what to do when one of them does not.
+The macOS half of drive-reveal has been verified on a real two-account setup. This is the
+checklist to verify it, what each step should print, and what to do when one does not.
 
 Everything here is self-contained — no need to have read anything else in the repo first.
 
@@ -16,8 +16,8 @@ The real difference is registration. Windows lets you point a URL scheme straigh
 command line in the registry. **macOS routes URL schemes to an application bundle and
 delivers the URL as an Apple Event, not as argv** — so a shell script cannot receive it at
 all. `install_macos.sh` therefore compiles a small AppleScript applet whose
-`on open location` handler shells out to the helper. That applet is the only genuinely
-untested idea in the project.
+`on open location` handler shells out to the helper. The installer re-signs the finished
+bundle after adding its URL-scheme metadata so Launch Services can safely register it.
 
 ## Prerequisites
 
@@ -105,7 +105,7 @@ bundle that looks installed and never fires.
 ```
 
 This dispatches `gdrivereveal://` through Launch Services exactly as the browser will. **A
-Finder window should open on My Drive.** This is the step that has never run anywhere.
+Finder window should open on My Drive.**
 
 **If nothing opens**, the applet is not receiving the Apple Event. Diagnose in this order:
 
