@@ -206,6 +206,14 @@ Nothing here travels in the repo, so each machine needs:
 Verify with `-Verify` / `--verify`, which prints the resolved mount point and smoke-tests
 the helper.
 
+The registration stores an absolute path to the checkout, so **deleting or moving the
+checkout leaves a handler that points at nothing**. Nothing announces this: the handler
+runs under `pythonw.exe`, which has no console, so a click just does nothing at all. Both
+the bookmarklet and the registry entry survive, which makes it look like a browser
+problem. `-Verify` prints `(MISSING)` against the helper path and is the fastest way to
+tell the two apart — run it first when clicking stops doing anything. Re-cloning to the
+registered path, or re-running the installer from the new location, fixes it.
+
 Bringing up a Mac for the first time: **[install/MACOS.md](install/MACOS.md)**.
 
 ## Layout

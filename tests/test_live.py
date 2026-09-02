@@ -104,6 +104,7 @@ def test_multiple_mounts() -> None:
     """
     print("\n== choosing among multiple mounts ==")
     import tempfile
+    import uuid
 
     rows = _sample("""
         SELECT i.id FROM items i JOIN stable_parents p ON p.item_stable_id = i.stable_id
@@ -127,8 +128,14 @@ def test_multiple_mounts() -> None:
     check("single mount is returned unchanged",
           _best_mount(known.relative, [real]) == real)
 
-    (decoy / "Shared drives" / "WORK").mkdir()
-    shared_child = Path("Shared drives/WORK/not-downloaded-yet.txt")
+    # The decoy shared drive has to be a name no real mount can also hold. Hardcoding
+    # "WORK" made this fail on any machine that actually has a shared drive called
+    # WORK: the real mount and the decoy then both hold it, and two matches is exactly
+    # the ambiguity _shared_drive_is_mounted is supposed to reject. The bug was in the
+    # fixture, not the resolver -- same shape as the mount-picking bug below it.
+    decoy_drive = f"drive-reveal-decoy-{uuid.uuid4().hex[:12]}"
+    (decoy / "Shared drives" / decoy_drive).mkdir()
+    shared_child = Path("Shared drives") / decoy_drive / "not-downloaded-yet.txt"
     check("visible shared-drive root is accepted",
           _shared_drive_is_mounted(shared_child, [real, decoy]))
     check("missing shared-drive root is detected",
@@ -137,13 +144,13 @@ def test_multiple_mounts() -> None:
           ))
 
     duplicate = Path(tempfile.mkdtemp(prefix="drive-reveal-duplicate-"))
-    (duplicate / "Shared drives" / "WORK").mkdir(parents=True)
+    (duplicate / "Shared drives" / decoy_drive).mkdir(parents=True)
     check("same-named shared drives are treated as ambiguous",
           not _shared_drive_is_mounted(shared_child, [decoy, duplicate]))
-    (duplicate / "Shared drives" / "WORK").rmdir()
+    (duplicate / "Shared drives" / decoy_drive).rmdir()
     (duplicate / "Shared drives").rmdir()
     duplicate.rmdir()
-    (decoy / "Shared drives" / "WORK").rmdir()
+    (decoy / "Shared drives" / decoy_drive).rmdir()
 
     for name in ("My Drive", "Shared drives"):
         (decoy / name).rmdir()
