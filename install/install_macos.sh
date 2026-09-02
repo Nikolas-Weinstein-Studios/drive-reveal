@@ -44,8 +44,10 @@ find_python() {
     do
         [ -n "$candidate" ] || continue
         [ -x "$candidate" ] || continue
-        # -S skips site customisation, so this stays a cheap "does it run" probe.
-        if "$candidate" -S -c 'import sys; sys.exit(0 if sys.version_info >= (3, 9) else 1)' \
+        # -S skips site customisation, so this stays a cheap "does it run" probe. -E
+        # ignores PYTHON* variables, so a terminal that exports PYTHONHOME (an app like
+        # FreeCAD leaves one behind) cannot make every candidate look broken.
+        if "$candidate" -E -S -c 'import sys; sys.exit(0 if sys.version_info >= (3, 9) else 1)' \
             >/dev/null 2>&1; then
             printf '%s' "$candidate"
             return 0
@@ -104,6 +106,20 @@ check_signature() {
     return 1
 }
 
+check_applet() {
+    # A bundle built before the environment fix invokes python directly, so it still dies
+    # on a browser launched from a PYTHONHOME-exporting app. That is invisible from the
+    # outside -- the scheme, stamp and signature all look right -- so read the script back.
+    local scpt="$APP/Contents/Resources/Scripts/main.scpt"
+    [ -f "$scpt" ] || { echo 'Applet script: missing' >&2; return 1; }
+    if osadecompile "$scpt" 2>/dev/null | grep -q -- '/usr/bin/env -i'; then
+        echo 'Applet: runs python in a scrubbed environment'
+        return 0
+    fi
+    echo 'Applet: built before the PYTHONHOME fix; re-run this script' >&2
+    return 1
+}
+
 check_registration() {
     [ -x "$LSREGISTER" ] || {
         echo 'Launch Services: lsregister not found' >&2
@@ -130,7 +146,7 @@ smoke_test_helper() {
     echo "Python: $python_bin"
     echo
     echo 'Resolving your My Drive root as a smoke test:'
-    if "$python_bin" "$HELPER" 'https://drive.google.com/drive/my-drive' --print; then
+    if "$python_bin" -E "$HELPER" 'https://drive.google.com/drive/my-drive' --print; then
         echo 'Helper works.'
     else
         echo 'Helper failed.' >&2
@@ -156,6 +172,7 @@ case "${1:-}" in
     [ -d "$APP" ] && {
         check_scheme || rc=1
         check_stamp || rc=1
+        check_applet || rc=1
         check_signature || rc=1
         check_registration || rc=1
     } || rc=1
@@ -193,10 +210,16 @@ rm -rf "$APP"
 workdir="$(mktemp -d)"
 trap 'rm -rf "$workdir"' EXIT
 
+# The applet inherits the environment of whatever launched the browser, and the browser
+# hands that on to us. FreeCAD, Blender, Houdini and friends export PYTHONHOME pointing at
+# their own bundled interpreter; a Homebrew python started with that set dies at
+# "Failed to import encodings module" before it runs a line of the helper. So the command
+# is built from a scrubbed environment (env -i, plus the two variables the helper genuinely
+# needs) and python is given -E so it ignores any PYTHON* variable that survives.
 cat > "$workdir/handler.applescript" <<APPLESCRIPT
 on open location this_URL
 	try
-		do shell script quoted form of "$python_bin" & " " & quoted form of "$HELPER" & " --gui " & quoted form of this_URL
+		do shell script "/usr/bin/env -i HOME=" & quoted form of "$HOME" & " PATH=/usr/bin:/bin:/usr/sbin:/sbin " & quoted form of "$python_bin" & " -E " & quoted form of "$HELPER" & " --gui " & quoted form of this_URL
 	on error errorMessage
 		display alert "Reveal in Drive folder" message errorMessage as warning
 	end try

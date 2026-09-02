@@ -127,6 +127,31 @@ Finder window should open on My Drive.**
      -f ~/Applications/DriveReveal.app
    ```
 
+### If an alert says "Failed to import encodings module"
+
+```
+Fatal Python error: Failed to import encodings module
+ModuleNotFoundError: No module named 'encodings'
+```
+
+The applet reached python; python could not find its own standard library. That is
+`PYTHONHOME` pointing somewhere else, and it is inherited rather than yours: the applet
+inherits the browser's environment, and the browser inherits the environment of whatever
+launched it. Apps that ship their own interpreter export it — **FreeCAD** sets
+`PYTHONHOME=/Applications/FreeCAD.app/Contents/Resources`, and a browser opened from
+FreeCAD's help menu carries that into every URL handler it launches. Confirm it on the
+running browser:
+
+```bash
+ps -E -p "$(pgrep -x firefox | head -1)" -ww -o command= | tr ' ' '\n' | grep '^PYTHON'
+```
+
+Installers from 2026-09-02 onwards build the applet so it scrubs the environment
+(`env -i`) and runs python with `-E`, so nothing inherited can reach it. Re-run
+`./install/install_macos.sh`; `--verify` reports `Applet: runs python in a scrubbed
+environment` once the bundle has the fix. Quitting and reopening the browser from the Dock
+also clears it, but only until the next time it is opened from another app.
+
 ### If the applet approach is a dead end
 
 Ranked fallbacks, none of which change the helper or the browser side:
@@ -166,6 +191,11 @@ addons.mozilla.org.
 The applet has absolute paths to python and to this checkout baked in at install time. Move
 the checkout, or upgrade python, and it breaks. `--verify` compares against a stamp
 recorded inside the bundle and tells you to re-run rather than failing mysteriously.
+
+The other one is environmental rather than structural, and it bites long after a clean
+install: a browser launched from an app that exports `PYTHONHOME` passes it down to the
+applet. See ["Failed to import encodings module"](#if-an-alert-says-failed-to-import-encodings-module)
+above.
 
 ## What to report back
 

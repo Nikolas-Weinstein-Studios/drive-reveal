@@ -51,7 +51,7 @@ profile).
 Writes `HKCU:\Software\Classes\gdrivereveal`. Per-user, so no administrator rights. It
 uses `pythonw.exe` so no console window flashes on each click.
 
-**macOS** — never run on a real Mac yet. Follow
+**macOS** — verified end to end on a real two-account Mac. Follow
 **[install/MACOS.md](install/MACOS.md)**, which is a full bring-up checklist with the
 expected output at each step and what to do when one fails.
 
@@ -77,6 +77,11 @@ Two things to know:
 - **The applet has absolute paths baked in** at install time, so moving the checkout or
   upgrading Python breaks it. `--verify` compares against a stamp recorded inside the
   bundle and tells you to re-run rather than failing mysteriously.
+- **The applet inherits the browser's environment**, and the browser inherits whatever
+  launched it. An app that bundles its own interpreter — FreeCAD, Blender, Houdini —
+  exports `PYTHONHOME`, which kills an unrelated python at startup with `Failed to import
+  encodings module`. The applet therefore runs python from a scrubbed environment
+  (`env -i`) and with `-E`.
 
 Both installers derive every path from their own location, so the repo can be cloned
 anywhere. Nothing machine-specific is written into the repo.

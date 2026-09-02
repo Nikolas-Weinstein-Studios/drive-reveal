@@ -91,7 +91,7 @@ if ($Verify) {
     Write-Host "`nResolving your My Drive root as a smoke test:"
     $python = (Get-Command python.exe -ErrorAction SilentlyContinue)
     if ($python -and (Test-Path $Helper)) {
-        & $python.Source $Helper 'https://drive.google.com/drive/my-drive' --print
+        & $python.Source -E $Helper 'https://drive.google.com/drive/my-drive' --print
         if ($LASTEXITCODE -eq 0) {
             Write-Host 'Helper works.' -ForegroundColor Green
         } else {
@@ -128,7 +128,11 @@ if (-not $pythonw) {
 }
 
 # "%1" must stay quoted: Drive folder names routinely contain spaces and ampersands.
-$command = '"{0}" "{1}" --gui "%1"' -f $pythonw, $Helper
+# -E makes python ignore PYTHON* variables. The handler inherits the environment of
+# whatever launched the browser, and apps that bundle their own interpreter (FreeCAD,
+# Blender, Houdini) export PYTHONHOME; without -E that kills the interpreter at startup
+# with "Failed to import encodings module".
+$command = '"{0}" -E "{1}" --gui "%1"' -f $pythonw, $Helper
 
 New-Item -Path $RegPath -Force | Out-Null
 New-ItemProperty -Path $RegPath -Name '(default)' -Value 'URL:Reveal in Drive folder' -PropertyType String -Force | Out-Null
